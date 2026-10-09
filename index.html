@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบตรวจการส่งงานนักเรียน</title>
+    <!-- Google Fonts: Sarabun -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SweetAlert2 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- SheetJS (xlsx) CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            primary: '#0C7C82',
+                            teal: '#35B4B0',
+                            accent: '#26A69A',
+                            lightgreen: '#AED581',
+                            amber: '#FFCA28',
+                            coral: '#FF8A65',
+                            rose: '#EF5350',
+                            purple: '#4A2C6D',
+                            darkred: '#D32F2F',
+                            darkorange: '#F57C00',
+                            gold: '#FBC02D',
+                            sky: '#0288D1',
+                            bg: '#F8FAFC'
+                        }
+                    },
+                    fontFamily: {
+                        sarabun: ['Sarabun', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #F8FAFC; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8); }
+        .sidebar-transition { transition: transform 0.3s ease-in-out; }
+        /* Custom scrollbar for modern UI */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #35B4B0; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #0C7C82; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased font-sarabun min-h-screen flex flex-col justify-between">
+
+    <!-- Global Loading Overlay -->
+    <div id="global-loader" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex flex-col items-center justify-center transition-opacity duration-300 hidden">
+        <div class="relative flex items-center justify-center">
+            <div class="w-16 h-16 border-4 border-brand-teal/30 border-t-brand-primary rounded-full animate-spin"></div>
+            <i class="fa-solid fa-graduation-cap absolute text-brand-primary text-xl"></i>
+        </div>
+        <p class="mt-4 text-white font-medium text-lg animate-pulse">กำลังโหลดข้อมูล...</p>
+    </div>
+
+    <!-- App Container -->
+    <div id="app" class="flex-grow flex flex-col">
+        <!-- Content dynamic injection point -->
+    </div>
+
+    <!-- Global Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 px-6 text-center text-sm text-slate-500 mt-auto">
+        <div class="container mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
+            <div>
+                <i class="fa-solid fa-school text-brand-primary mr-1"></i>
+                <span id="footer-school-name" class="font-semibold text-slate-700">โรงเรียนวิทยาการศึกษา</span> | <span id="footer-affiliation">สำนักงานเขตพื้นที่การศึกษามัธยมศึกษา</span>
+            </div>
+            <div class="text-xs text-slate-400">
+                ระบบตรวจงานและส่งงานนักเรียน &copy; 2026 Modern Minimalist Edition
+            </div>
+        </div>
+    </footer>
+
+    <!-- Universal Modal Container -->
+    <div id="modal-container" class="fixed inset-0 z-40 hidden overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div id="modal-content" class="bg-white rounded-2xl shadow-2xl max-w-lg w-full transform transition-all p-6 relative">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- APP SCRIPT LOGIC -->
+    <script>
+        // System Initial State / Dummy Database
+        const db = {
+            systemSettings: {
+                schoolName: "โรงเรียนสาธิตวิทยาการศึกษา",
+                affiliation: "สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน",
+                logoUrl: "https://cdn-icons-png.flaticon.com/512/2997/2997300.png",
+                classes: ["ม.1", "ม.2", "ม.3", "ม.4", "ม.5", "ม.6"],
+                rooms: ["1/1", "1/2", "2/1", "2/2", "3/1", "4/1", "5/1", "6/1"],
+                terms: ["1/2569", "2/2569"],
+                subjectCodes: ["TH101", "MA101", "SC101", "EN101", "CS101"],
+                subjects: ["ภาษาไทย", "คณิตศาสตร์เพิ่มเติม", "วิทยาศาสตร์กายภาพ", "ภาษาอังกฤษฟังพูด", "วิทยาการคำนวณ"],
+                workTypes: [
+                    { id: 'notebook', name: 'สมุด', color: '#0C7C82' },
+                    { id: 'worksheet', name: 'ใบงาน', color: '#35B4B0' },
+                    { id: 'group', name: 'งานกลุ่ม', color: '#4A2C6D' }
+                ]
+            },
+            users: [
+                { id: 1, username: 'admin', role: 'admin', name: 'ครูผู้ดูแล ระบบ', password: 'admin123' },
+                { id: 2, username: 'teacher1', role: 'admin', name: 'ครูสมชาย ใจดี', password: '123' },
+                { id: 3, username: '65001', role: 'student', name: 'นายดนัย เรียนดี', classLevel: 'ม.4', room: '4/1', password: '65001' },
+                { id: 4, username: '65002', role: 'student', name: 'นางสาววิไล ตั้งใจ', classLevel: 'ม.4', room: '4/1', password: '65002' }
+            ],
+            students: [
+                { id: '65001', name: 'นายดนัย เรียนดี', classLevel: 'ม.4', room: '4/1', color: '#0C7C82' },
+                { id: '65002', name: 'นางสาววิไล ตั้งใจ', classLevel: 'ม.4', room: '4/1', color: '#35B4B0' },
+                { id: '65003', name: 'นายกิตติศักดิ์ ชัยชนะ', classLevel: 'ม.4', room: '4/1', color: '#26A69A' },
+                { id: '65004', name: 'นางสาวสุดาพร มีสุข', classLevel: 'ม.4', room: '4/1', color: '#FF8A65' }
+            ],
+            assignments: [
+                { id: 101, title: 'ใบงานที่ 1 การเขียนโปรแกรม Python', subject: 'วิทยาการคำนวณ', classLevel: 'ม.4', room: '4/1', dueDate: '2026-10-15', score: 10, detail: 'ให้นักเรียนเขียนโปรแกรมคำนวณพื้นที่วงกลม', type: 'ใบงาน', color: '#35B4B0', assignedDate: '2026-10-01' },
+                { id: 102, title: 'สรุปโน้ตบทที่ 2 ฟิสิกส์เบื้องต้น', subject: 'วิทยาศาสตร์กายภาพ', classLevel: 'ม.4', room: '4/1', dueDate: '2026-10-20', score: 5, detail: 'ถอดความรู้ลงในสมุดอย่างน้อย 2 หน้า', type: 'สมุด', color: '#0C7C82', assignedDate: '2026-10-05' },
+                { id: 103, title: 'รายงานโครงงานกลุ่มนวัตกรรม', subject: 'วิทยาการคำนวณ', classLevel: 'ม.4', room: '4/1', dueDate: '2026-10-25', score: 20, detail: 'ทำสไลด์นำเสนอ 10 สไลด์', type: 'งานกลุ่ม', color: '#4A2C6D', assignedDate: '2026-10-08' }
+            ],
+            submissions: [
+                { id: 1, assignmentId: 101, studentId: '65001', fileType: 'pdf', fileName: 'work_danai.pdf', submittedAt: '2026-10-10 09:30', status: 'ตรวจแล้ว', score: 9, teacherNote: 'ทำงานเรียบร้อยมาก', color: '#AED581' },
+                { id: 2, assignmentId: 102, studentId: '65001', fileType: 'link', fileName: 'https://drive.google.com/doc1', submittedAt: '2026-10-11 14:20', status: 'ยังไม่ตรวจ', score: 0, teacherNote: '', color: '#FFCA28' },
+                { id: 3, assignmentId: 101, studentId: '65002', fileType: 'png', fileName: 'pic_wilai.png', submittedAt: '2026-10-09 11:15', status: 'งานไม่สมบูรณ์', score: 4, teacherNote: 'ส่งไฟล์รูปภาพไม่ชัดเจน กรุณาส่งใหม่', color: '#EF5350' }
+            ],
+            teacherMessages: [
+                { id: 1, studentId: '65001', message: 'กรุณาแก้ไขรายงานกลุ่ม และแนบเอกสารอ้างอิงเพิ่มเติมด้วยครับ', sender: 'ครูสมชาย', date: '2026-10-08 15:00' },
+                { id: 2, studentId: '65002', message: 'รูปใบงานที่ส่งมามองไม่เห็นข้อความ ให้ถ่ายใหม่แล้วส่งเพิ่มในระบบนะ', sender: 'ครูผู้ดูแล', date: '2026-10-09 13:20' }
+            ]
+        };
+
+        // Application State
+        let currentUser = null;
+        let currentMenu = 'dashboard';
+        let sidebarOpen = false;
+
+        // Initialize App
+        window.addEventListener('DOMContentLoaded', () => {
+            updateFooterInfo();
+            renderApp();
+        });
+
+        function showLoader() {
+            document.getElementById('global-loader').classList.remove('hidden');
+        }
+
+        function hideLoader() {
+            setTimeout(() => {
+                document.getElementById('global-loader').classList.add('hidden');
+            }, 300);
+        }
+
+        function updateFooterInfo() {
+            document.getElementById('footer-school-name').textContent = db.systemSettings.schoolName;
+            document.getElementById('footer-affiliation').textContent = db.systemSettings.affiliation;
+        }
+
+        // Navigation & Core Render
+        function renderApp() {
+            const app = document.getElementById('app');
+            if (!currentUser) {
+                app.innerHTML = renderLoginPage();
+            } else if (currentUser.role === 'admin') {
+                app.innerHTML = renderAdminLayout();
+                initMenuContent();
+            } else if (currentUser.role === 'student') {
+                app.innerHTML = renderStudentLayout();
+                initStudentMenuContent();
+            }
+        }
+
+        /* ==========================================================================
+           1. LOGIN PAGE (เข้าระบบ)
+           ========================================================================== */
+        function renderLoginPage() {
+            return `
+            <div class="min-h-[85vh] flex items-center justify-center p-4">
+                <div class="w-full max-w-4xl bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col md:flex-row border border-slate-100">
+                    <!-- Left Side: Branding Banner -->
+                    <div class="md:w-1/2 bg-gradient-to-br from-brand-primary via-brand-teal to-brand-accent p-8 text-white flex flex-col justify-between relative overflow-hidden">
+                        <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+                        <div>
+                            <div class="flex items-center gap-3 mb-6">
+                                <img src="${db.systemSettings.logoUrl}" alt="Logo" class="w-14 h-14 object-contain bg-white/20 p-2 rounded-2xl backdrop-blur-md">
+                                <div>
+                                    <h1 class="font-bold text-xl leading-tight">${db.systemSettings.schoolName}</h1>
+                                    <p class="text-xs text-teal-100">${db.systemSettings.affiliation}</p>
+                                </div>
+                            </div>
+                            <div class="mt-8 space-y-3">
+                                <span class="bg-white/20 text-xs px-3 py-1 rounded-full text-white inline-block backdrop-blur-md">Smart Academic System</span>
+                                <h2 class="text-3xl font-bold leading-snug">ระบบตรวจการส่งงาน<br>และ ติดตามการเรียน</h2>
+                                <p class="text-sm text-teal-100 font-light">บริหารจัดการการส่งงาน ตรวจสอบ และให้คะแนนนักเรียนได้อย่างรวดเร็ว ครบถ้วนในที่เดียว</p>
+                            </div>
+                        </div>
+                        <div class="mt-10 text-xs text-teal-200/80">
+                            * เข้าสู่ระบบด้วย Username เดียวกันทั้งครูและนักเรียน
+                        </div>
+                    </div>
+
+                    <!-- Right Side: Login Form (Horizontal Card UI Style) -->
+                    <div class="md:w-1/2 p-8 flex flex-col justify-center bg-white">
+                        <div class="mb-6">
+                            <h3 class="text-2xl font-bold text-slate-800">เข้าสู่ระบบ</h3>
+                            <p class="text-xs text-slate-500 mt-1">กรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าใช้งานระบบ</p>
+                        </div>
+
+                        <form onsubmit="handleLogin(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อผู้ใช้งาน (Username)</label>
+                                <div class="relative">
+                                    <i class="fa-solid fa-user absolute left-3 top-3.5 text-slate-400 text-sm"></i>
+                                    <input type="text" id="login-username" required class="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none transition" placeholder="เช่น admin หรือ รหัสนักเรียน">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">รหัสผ่าน (Password)</label>
+                                <div class="relative">
+                                    <i class="fa-solid fa-lock absolute left-3 top-3.5 text-slate-400 text-sm"></i>
+                                    <input type="password" id="login-password" required class="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none transition" placeholder="••••••••">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="w-full bg-brand-primary hover:bg-brand-teal text-white font-medium py-3 rounded-xl shadow-lg shadow-brand-primary/20 transition duration-200 flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
+                            </button>
+                        </form>
+
+                        <div class="mt-6 pt-6 border-t border-slate-100 text-xs text-slate-400 space-y-1">
+                            <p><b>บัญชีทดสอบระบบ:</b></p>
+                            <p>• ผู้ดูแล/ครู: Username: <code class="text-brand-primary">admin</code> | Pass: <code class="text-brand-primary">admin123</code></p>
+                            <p>• นักเรียน: Username: <code class="text-brand-primary">65001</code> | Pass: <code class="text-brand-primary">65001</code></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            showLoader();
+            const u = document.getElementById('login-username').value.trim();
+            const p = document.getElementById('login-password').value.trim();
+
+            setTimeout(() => {
+                const found = db.users.find(x => x.username === u && x.password === p);
+                hideLoader();
+                if (found) {
+                    currentUser = found;
+                    currentMenu = 'dashboard';
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'เข้าสู่ระบบสำเร็จ',
+                        text: `ยินดีต้อนรับคุณ ${found.name}`,
+                        timer: 1500,
+                        showConfirmButton: false
+                    }).then(() => renderApp());
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'เข้าสู่ระบบไม่สำเร็จ',
+                        text: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
+                        confirmButtonColor: '#0C7C82'
+                    });
+                }
+            }, 500);
+        }
+
+        function logout() {
+            Swal.fire({
+                title: 'ยืนยันการออกจากระบบ?',
+                text: 'คุณต้องการออกจากระบบตรวจการส่งงานใช่หรือไม่',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#0C7C82',
+                cancelButtonColor: '#EF5350',
+                confirmButtonText: 'ใช่, ออกจากระบบ',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showLoader();
+                    setTimeout(() => {
+                        currentUser = null;
+                        hideLoader();
+                        renderApp();
+                    }, 400);
+                }
+            });
+        }
+
+        /* ==========================================================================
+           2. ADMIN / TEACHER LAYOUT & MENUS
+           ========================================================================== */
+        function renderAdminLayout() {
+            const adminMenus = [
+                { id: 'dashboard', name: 'แดชบอร์ด', icon: 'fa-chart-pie' },
+                { id: 'settings', name: 'ตั้งค่าระบบ', icon: 'fa-sliders' },
+                { id: 'users', name: 'จัดการผู้ใช้งาน', icon: 'fa-users-gear' },
+                { id: 'students', name: 'จัดการข้อมูลนักเรียน', icon: 'fa-user-graduate' },
+                { id: 'assignments', name: 'มอบหมายงาน', icon: 'fa-file-signature' },
+                { id: 'grading', name: 'ตรวจการส่งงาน', icon: 'fa-square-check' },
+                { id: 'search-student', name: 'ค้นหาผู้เรียน', icon: 'fa-magnifying-glass-chart' },
+                { id: 'tracking', name: 'ติดตามไม่ส่งงาน', icon: 'fa-bell-concierge' }
+            ];
+
+            return `
+            <div class="flex min-h-screen relative">
+                <!-- Sidebar Desktop & Mobile Slide-out -->
+                <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200 transform -translate-x-full lg:translate-x-0 sidebar-transition flex flex-col justify-between shadow-sm">
+                    <div>
+                        <!-- Brand Header -->
+                        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <img src="${db.systemSettings.logoUrl}" class="w-10 h-10 object-contain p-1 bg-slate-50 rounded-xl">
+                                <div class="overflow-hidden">
+                                    <h2 class="font-bold text-sm text-slate-800 truncate">${db.systemSettings.schoolName}</h2>
+                                    <span class="text-[10px] text-brand-primary bg-brand-teal/10 px-2 py-0.5 rounded-full font-medium">ระบบผู้ดูแล / ครู</span>
+                                </div>
+                            </div>
+                            <button onclick="toggleSidebar()" class="lg:hidden text-slate-400 hover:text-slate-600">
+                                <i class="fa-solid fa-xmark text-lg"></i>
+                            </button>
+                        </div>
+
+                        <!-- Menu List -->
+                        <nav class="p-3 space-y-1">
+                            ${adminMenus.map(m => `
+                                <button onclick="switchAdminMenu('${m.id}')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${currentMenu === m.id ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20' : 'text-slate-600 hover:bg-slate-100'}">
+                                    <i class="fa-solid ${m.icon} w-5 text-center ${currentMenu === m.id ? 'text-white' : 'text-brand-teal'}"></i>
+                                    <span>${m.name}</span>
+                                </button>
+                            `).join('')}
+                        </nav>
+                    </div>
+
+                    <!-- User Profile & Logout Bottom Section -->
+                    <div class="p-4 border-t border-slate-100 bg-slate-50/50">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2 overflow-hidden">
+                                <div class="w-8 h-8 rounded-full bg-brand-primary text-white flex items-center justify-center font-bold text-xs">
+                                    ${currentUser.name.charAt(0)}
+                                </div>
+                                <div class="truncate">
+                                    <p class="text-xs font-semibold text-slate-800 truncate">${currentUser.name}</p>
+                                    <p class="text-[10px] text-slate-400">@${currentUser.username}</p>
+                                </div>
+                            </div>
+                            <button onclick="logout()" class="text-slate-400 hover:text-brand-rose p-1.5 rounded-lg hover:bg-white transition" title="ออกจากระบบ">
+                                <i class="fa-solid fa-right-from-bracket text-base"></i>
+                            </button>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Overlay for mobile sidebar -->
+                <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/30 z-20 hidden lg:hidden"></div>
+
+                <!-- Main Content Area -->
+                <main class="flex-1 lg:ml-64 flex flex-col min-h-screen">
+                    <!-- Top Navbar Mobile Toggle -->
+                    <header class="bg-white border-b border-slate-200 py-3 px-4 flex items-center justify-between sticky top-0 z-10">
+                        <div class="flex items-center gap-3">
+                            <button onclick="toggleSidebar()" class="lg:hidden text-slate-600 p-2 hover:bg-slate-100 rounded-lg">
+                                <i class="fa-solid fa-bars text-lg"></i>
+                            </button>
+                            <h2 class="text-lg font-bold text-slate-800 capitalize" id="current-page-title">
+                                ${adminMenus.find(x => x.id === currentMenu)?.name || ''}
+                            </h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full hidden sm:inline-block">
+                                <i class="fa-regular fa-calendar mr-1"></i> ${new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </span>
+                        </div>
+                    </header>
+
+                    <!-- Page Body Container -->
+                    <div id="admin-main-content" class="p-4 md:p-6 flex-grow">
+                        <!-- Dynamic Content Inject -->
+                    </div>
+                </main>
+            </div>
+
+            <!-- Mobile Phone Quick Shortcut Bar (Visible on Mobile Responsive Only) -->
+            <div class="lg:hidden fixed bottom-4 right-4 z-20 flex flex-col gap-2">
+                <button onclick="quickPhoneShortcut()" class="w-12 h-12 bg-brand-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition border-2 border-white" title="ทางลัดสไตล์ iPhone">
+                    <i class="fa-solid fa-mobile-screen-button text-xl"></i>
+                </button>
+            </div>
+            `;
+        }
+
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebarOpen = !sidebarOpen;
+            if (sidebarOpen) {
+                sb.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                sb.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function switchAdminMenu(menuId) {
+            showLoader();
+            currentMenu = menuId;
+            if (sidebarOpen) toggleSidebar();
+            setTimeout(() => {
+                renderApp();
+                hideLoader();
+            }, 300);
+        }
+
+        function initMenuContent() {
+            const container = document.getElementById('admin-main-content');
+            if (!container) return;
+
+            switch(currentMenu) {
+                case 'dashboard':
+                    container.innerHTML = renderAdminDashboard();
+                    initAdminCharts();
+                    break;
+                case 'settings':
+                    container.innerHTML = renderSettingsMenu();
+                    break;
+                case 'users':
+                    container.innerHTML = renderUsersMenu();
+                    break;
+                case 'students':
+                    container.innerHTML = renderStudentsMenu();
+                    break;
+                case 'assignments':
+                    container.innerHTML = renderAssignmentsMenu();
+                    break;
+                case 'grading':
+                    container.innerHTML = renderGradingMenu();
+                    break;
+                case 'search-student':
+                    container.innerHTML = renderSearchStudentMenu();
+                    break;
+                case 'tracking':
+                    container.innerHTML = renderTrackingMenu();
+                    break;
+            }
+        }
+
+        /* --------------------------------------------------------------------------
+           Admin Menu 1: Dashboard
+           -------------------------------------------------------------------------- */
+        function renderAdminDashboard() {
+            const totalAssignments = db.assignments.length;
+            const notebookCount = db.assignments.filter(a => a.type === 'สมุด').length;
+            const worksheetCount = db.assignments.filter(a => a.type === 'ใบงาน').length;
+            const groupCount = db.assignments.filter(a => a.type === 'งานกลุ่ม').length;
+
+            return `
+            <div class="space-y-6">
+                <!-- Mobile Shortcuts Banner (Mobile Only) -->
+                <div class="block lg:hidden bg-gradient-to-r from-brand-primary to-brand-teal text-white p-4 rounded-2xl shadow-sm mb-4">
+                    <p class="text-xs font-medium text-teal-100">เมนูทางลัดด่วน (Mobile Shortcut Bar)</p>
+                    <div class="grid grid-cols-4 gap-2 mt-3 text-center">
+                        <button onclick="switchAdminMenu('assignments')" class="bg-white/20 p-2 rounded-xl text-xs hover:bg-white/30">
+                            <i class="fa-solid fa-plus block text-base mb-1"></i>สั่งงาน
+                        </button>
+                        <button onclick="switchAdminMenu('grading')" class="bg-white/20 p-2 rounded-xl text-xs hover:bg-white/30">
+                            <i class="fa-solid fa-check-double block text-base mb-1"></i>ตรวจงาน
+                        </button>
+                        <button onclick="switchAdminMenu('tracking')" class="bg-white/20 p-2 rounded-xl text-xs hover:bg-white/30">
+                            <i class="fa-solid fa-bell block text-base mb-1"></i>ติดตาม
+                        </button>
+                        <button onclick="switchAdminMenu('search-student')" class="bg-white/20 p-2 rounded-xl text-xs hover:bg-white/30">
+                            <i class="fa-solid fa-search block text-base mb-1"></i>ค้นหา
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Cards Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Card ทั้งหมด -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400">งานทั้งหมด</p>
+                                <h3 class="text-2xl font-bold text-slate-800 mt-1">${totalAssignments} <span class="text-xs text-slate-500 font-normal">รายการ</span></h3>
+                            </div>
+                            <div class="w-12 h-12 bg-brand-sky/10 text-brand-sky rounded-2xl flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-folder-open"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 bg-slate-100 rounded-full h-2 w-full overflow-hidden">
+                            <div class="bg-brand-sky h-full" style="width: 100%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Card สมุด -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400">ประเภท: สมุด</p>
+                                <h3 class="text-2xl font-bold text-slate-800 mt-1">${notebookCount} <span class="text-xs text-slate-500 font-normal">รายการ</span></h3>
+                            </div>
+                            <div class="w-12 h-12 bg-[#0C7C82]/10 text-[#0C7C82] rounded-2xl flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-book"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 bg-slate-100 rounded-full h-2 w-full overflow-hidden">
+                            <div class="bg-[#0C7C82] h-full" style="width: ${(notebookCount/totalAssignments*100)||0}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Card ใบงาน -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400">ประเภท: ใบงาน</p>
+                                <h3 class="text-2xl font-bold text-slate-800 mt-1">${worksheetCount} <span class="text-xs text-slate-500 font-normal">รายการ</span></h3>
+                            </div>
+                            <div class="w-12 h-12 bg-[#35B4B0]/10 text-[#35B4B0] rounded-2xl flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-file-lines"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 bg-slate-100 rounded-full h-2 w-full overflow-hidden">
+                            <div class="bg-[#35B4B0] h-full" style="width: ${(worksheetCount/totalAssignments*100)||0}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Card งานกลุ่ม -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400">ประเภท: งานกลุ่ม</p>
+                                <h3 class="text-2xl font-bold text-slate-800 mt-1">${groupCount} <span class="text-xs text-slate-500 font-normal">รายการ</span></h3>
+                            </div>
+                            <div class="w-12 h-12 bg-[#4A2C6D]/10 text-[#4A2C6D] rounded-2xl flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-people-group"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 bg-slate-100 rounded-full h-2 w-full overflow-hidden">
+                            <div class="bg-[#4A2C6D] h-full" style="width: ${(groupCount/totalAssignments*100)||0}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <h4 class="font-bold text-slate-800 text-sm mb-4">สัดส่วนประเภทภาระงาน</h4>
+                        <div class="relative w-full h-64 flex items-center justify-center">
+                            <canvas id="typeChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <h4 class="font-bold text-slate-800 text-sm mb-4">สถานะการตรวจงานภาพรวม</h4>
+                        <div class="relative w-full h-64 flex items-center justify-center">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        function initAdminCharts() {
+            // Chart 1: Work Types
+            const ctx1 = document.getElementById('typeChart')?.getContext('2d');
+            if (ctx1) {
+                new Chart(ctx1, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['สมุด', 'ใบงาน', 'งานกลุ่ม'],
+                        datasets: [{
+                            data: [
+                                db.assignments.filter(a => a.type === 'สมุด').length,
+                                db.assignments.filter(a => a.type === 'ใบงาน').length,
+                                db.assignments.filter(a => a.type === 'งานกลุ่ม').length
+                            ],
+                            backgroundColor: ['#0C7C82', '#35B4B0', '#4A2C6D']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+
+            // Chart 2: Status
+            const ctx2 = document.getElementById('statusChart')?.getContext('2d');
+            if (ctx2) {
+                new Chart(ctx2, {
+                    type: 'bar',
+                    data: {
+                        labels: ['ตรวจแล้ว', 'ยังไม่ตรวจ', 'งานไม่สมบูรณ์'],
+                        datasets: [{
+                            label: 'จำนวนงาน (ชิ้น)',
+                            data: [
+                                db.submissions.filter(s => s.status === 'ตรวจแล้ว').length,
+                                db.submissions.filter(s => s.status === 'ยังไม่ตรวจ').length,
+                                db.submissions.filter(s => s.status === 'งานไม่สมบูรณ์').length
+                            ],
+                            backgroundColor: ['#AED581', '#FFCA28', '#EF5350']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+        }
+
+        /* --------------------------------------------------------------------------
+           Admin Menu 2: System Settings
+           -------------------------------------------------------------------------- */
+        function renderSettingsMenu() {
+            const s = db.systemSettings;
+            return `
+            <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm max-w-4xl mx-auto space-y-6">
+                <h3 class="text-base font-bold text-slate-800 border-b border-slate-100 pb-3">
+                    <i class="fa-solid fa-sliders text-brand-primary mr-2"></i>ตั้งค่าระบบโรงเรียน
+                </h3>
+
+                <form onsubmit="saveSettings(event)" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อโรงเรียน</label>
+                            <input type="text" id="set-school-name" value="${s.schoolName}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-teal outline-none" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อสังกัด</label>
+                            <input type="text" id="set-affiliation" value="${s.affiliation}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-teal outline-none" required>
+                        </div>
+                    </div>
+
+                    <!-- Logo Upload with Preview -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">อัพโหลดรูปโลโก้โรงเรียน (Preview ไม่บังคับ)</label>
+                        <div class="flex items-center gap-4">
+                            <img id="logo-preview" src="${s.logoUrl}" class="w-16 h-16 object-contain p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                            <input type="file" accept="image/*" onchange="previewLogo(event)" class="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-medium file:bg-brand-primary file:text-white hover:file:bg-brand-teal">
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เพิ่มระดับชั้น (แยกด้วยเครื่องหมายจุลภาค)</label>
+                            <input type="text" id="set-classes" value="${s.classes.join(',')}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เพิ่มห้องเรียน (แยกด้วยเครื่องหมายจุลภาค)</label>
+                            <input type="text" id="set-rooms" value="${s.rooms.join(',')}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เพิ่มภาคเรียน / ปีการศึกษา</label>
+                            <input type="text" id="set-terms" value="${s.terms.join(',')}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เพิ่มรหัสวิชา</label>
+                            <input type="text" id="set-subject-codes" value="${s.subjectCodes.join(',')}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เพิ่มรายวิชา</label>
+                            <input type="text" id="set-subjects" value="${s.subjects.join(',')}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button type="submit" class="bg-brand-primary hover:bg-brand-teal text-white px-6 py-2.5 rounded-xl text-sm font-medium shadow-md shadow-brand-primary/20 transition">
+                            <i class="fa-solid fa-save mr-1"></i> บันทึกการแก้ไขข้อมูล
+                        </button>
+                    </div>
+                </form>
+            </div>
+            `;
+        }
+
+        function previewLogo(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    document.getElementById('logo-preview').src = evt.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function saveSettings(e) {
+            e.preventDefault();
+            showLoader();
+            db.systemSettings.schoolName = document.getElementById('set-school-name').value;
+            db.systemSettings.affiliation = document.getElementById('set-affiliation').value;
+            db.systemSettings.logoUrl = document.getElementById('logo-preview').src;
+            db.systemSettings.classes = document.getElementById('set-classes').value.split(',').map(x => x.trim());
+            db.systemSettings.rooms = document.getElementById('set-rooms').value.split(',').map(x => x.trim());
+            db.systemSettings.terms = document.getElementById('set-terms').value.split(',').map(x => x.trim());
+            db.systemSettings.subjectCodes = document.getElementById('set-subject-codes').value.split(',').map(x => x.trim());
+            db.systemSettings.subjects = document.getElementById('set-subjects').value.split(',').map(x => x.trim());
+
+            updateFooterInfo();
+            setTimeout(() => {
+                hideLoader();
+                Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', text: 'ปรับปรุงข้อมูลตั้งค่าระบบเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false });
+            }, 400);
+        }
+
+        /* --------------------------------------------------------------------------
+           Admin Menu 3: User Management
+           -------------------------------------------------------------------------- */
+        function renderUsersMenu() {
+            return `
+            <div class="space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80">
+                    <div>
+                        <h3 class="font-bold text-slate-800">จัดการผู้ใช้งานระบบ</h3>
+                        <p class="text-xs text-slate-500">จัดการรายชื่อผู้ดูแล ครู และผู้ใช้งานทั่วไป</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="openAddUserModal()" class="bg-brand-primary hover:bg-brand-teal text-white px-3 py-2 rounded-xl text-xs font-medium shadow-sm">
+                            <i class="fa-solid fa-plus mr-1"></i> เพิ่มผู้ใช้งาน
+                        </button>
+                        <button onclick="downloadExcelTemplate('users')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl text-xs font-medium">
+                            <i class="fa-solid fa-file-excel text-emerald-600 mr-1"></i> Template Excel
+                        </button>
+                        <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-medium cursor-pointer">
+                            <i class="fa-solid fa-file-import mr-1"></i> นำเข้า Excel (UTF-8)
+                            <input type="file" accept=".xlsx, .xls" class="hidden" onchange="importUsersExcel(event)">
+                        </label>
+                        <button onclick="exportUsersExcel()" class="bg-emerald-800 hover:bg-emerald-900 text-white px-3 py-2 rounded-xl text-xs font-medium">
+                            <i class="fa-solid fa-file-export mr-1"></i> ส่งออก Excel
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                                <tr>
+                                    <th class="p-3">Username</th>
+                                    <th class="p-3">ชื่อ-นามสกุล</th>
+                                    <th class="p-3">บทบาท</th>
+                                    <th class="p-3 text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                ${db.users.map(u => `
+                                    <tr class="hover:bg-slate-50/50">
+                                        <td class="p-3 font-medium text-slate-700">${u.username}</td>
+                                        <td class="p-3">${u.name}</td>
+                                        <td class="p-3">
+                                            <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold ${u.role === 'admin' ? 'bg-brand-purple/10 text-brand-purple' : 'bg-brand-teal/10 text-brand-primary'}">
+                                                ${u.role === 'admin' ? 'ผู้ดูแลระบบ/ครู' : 'นักเรียน'}
+                                            </span>
+                                        </td>
+                                        <td class="p-3 text-center space-x-1">
+                                            <button onclick="openEditUserModal(${u.id})" class="text-brand-sky hover:bg-sky-50 p-1.5 rounded-lg">
+                                                <i class="fa-solid fa-pen-to-square"></i>
+                                            </button>
+                                            <button onclick="deleteUser(${u.id})" class="text-brand-rose hover:bg-rose-50 p-1.5 rounded-lg">
+                                                <i class="fa-solid fa-trash-can"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        function openAddUserModal() {
+            openModal(`
+                <h3 class="font-bold text-slate-800 text-base mb-4">เพิ่มผู้ใช้งานใหม่</h3>
+                <form onsubmit="saveUser(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Username</label>
+                        <input type="text" id="user-username" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-teal">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
+                        <input type="password" id="user-password" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-teal">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อ-นามสกุล</label>
+                        <input type="text" id="user-fullname" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-teal">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">บทบาท</label>
+                        <div class="flex gap-4 text-sm mt-1">
+                            <label class="flex items-center gap-1.5"><input type="radio" name="user-role" value="admin" checked> ผู้ดูแลระบบ/ครู</label>
+                            <label class="flex items-center gap-1.5"><input type="radio" name="user-role" value="student"> นักเรียน</label>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-600">ยกเลิก</button>
+                        <button type="submit" class="px-4 py-2 bg-brand-primary text-white rounded-xl text-xs font-medium">บันทึก</button>
+                    </div>
+                </form>
+            `);
+        }
+
+        function saveUser(e) {
+            e.preventDefault();
+            const u = document.getElementById('user-username').value;
+            const p = document.getElementById('user-password').value;
+            const n = document.getElementById('user-fullname').value;
+            const r = document.querySelector('input[name="user-role"]:checked').value;
+
+            db.users.push({ id: Date.now(), username: u, password: p, name: n, role: r });
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'เพิ่มเรียบร้อย', timer: 1200, showConfirmButton: false });
+            switchAdminMenu('users');
+        }
+
+        function deleteUser(id) {
+            Swal.fire({
+                title: 'ยืนยันการลบผู้ใช้?',
+                text: 'หากลบแล้วจะไม่สามารถถอยกลับได้',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#EF5350',
+                cancelButtonColor: '#94A3B8',
+                confirmButtonText: 'ลบข้อมูล',
+                cancelButtonText: 'ยกเลิก'
+            }).then(r => {
+                if (r.isConfirmed) {
+                    db.users = db.users.filter(x => x.id !== id);
+                    Swal.fire({ icon: 'success', title: 'ลบสำเร็จ', timer: 1000, showConfirmButton: false });
+                    switchAdminMenu('users');
+                }
+            });
+        }
+
+        function downloadExcelTemplate(type) {
+            const data = type === 'users' ? [
+                { Username: '65005', Password: 'passwordsample', Name: 'นายทดสอบ ระบบ', Role: 'student' }
+            ] : [
+                { StudentID: '65005', Name: 'นายทดสอบ ระบบ', ClassLevel: 'ม.4', Room: '4/1', ColorHex: '#0C7C82' }
+            ];
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Template");
+            XLSX.writeFile(wb, `${type}_template.xlsx`);
+        }
+
+        function exportUsersExcel() {
+            const data = db.users.map(u => ({ Username: u.username, Name: u.name, Role: u.role }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Users");
+            XLSX.writeFile(wb, "users_export.xlsx");
+        }
+
+        function importUsersExcel(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const data = new Uint8Array(evt.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+                jsonData.forEach(item => {
+                    if (item.Username && item.Name) {
+                        db.users.push({
+                            id: Date.now() + Math.random(),
+                            username: String(item.Username),
+                            password: String(item.Password || '123456'),
+                            name: item.Name,
+                            role: item.Role || 'student'
+                        });
+                    }
+                });
+                Swal.fire({ icon: 'success', title: 'นำเข้าข้อมูลสำเร็จ', text: `นำเข้า ${jsonData.length} รายการแล้ว` });
+                switchAdminMenu('users');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        /* --------------------------------------------------------------------------
+           Admin Menu 4: Student Data Management
+           -------------------------------------------------------------------------- */
+        function renderStudentsMenu() {
+            return `
+            <div class="space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80">
+                    <div>
+                        <h3 class="font-bold text-slate-800">จัดการข้อมูลนักเรียน</h3>
+                        <p class="text-xs text-slate-500">เพิ่ม ลบ แก้ไข ข้อมูลนักเรียนพร้อมเลือกสีประจำตัว</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="openAddStudentModal()" class="bg-brand-primary hover:bg-brand-teal text-white px-3 py-2 rounded-xl text-xs font-medium shadow-sm">
+                            <i class="fa-solid fa-plus mr-1"></i> เพิ่มนักเรียน
+                        </button>
+                        <button onclick="downloadExcelTemplate('students')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl text-xs font-medium">
+                            <i class="fa-solid fa-file-excel text-emerald-600 mr-1"></i> Template
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                                <tr>
+                                    <th class="p-3">รหัสนักเรียน</th>
+                                    <th class="p-3">ชื่อ-นามสกุล</th>
+                                    <th class="p-3">ระดับชั้น</th>
+                                    <th class="p-3">ห้องเรียน</th>
+                                    <th class="p-3">สีแท็กประจำตัว</th>
+                                    <th class="p-3 text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                ${db.students.map(s => `
+                                    <tr class="hover:bg-slate-50/50">
+                                        <td class="p-3 font-medium text-slate-700">${s.id}</td>
+                                        <td class="p-3">${s.name}</td>
+                                        <td class="p-3">${s.classLevel}</td>
+                                        <td class="p-3">${s.room}</td>
+                                        <td class="p-3">
+                                            <div class="flex items-center gap-2">
+                                                <span class="w-4 h-4 rounded-full border border-slate-300" style="background-color: ${s.color}"></span>
+                                                <span class="text-xs text-slate-500">${s.color}</span>
+                                            </div>
+                                        </td>
+                                        <td class="p-3 text-center space-x-1">
+                                            <button onclick="deleteStudent('${s.id}')" class="text-brand-rose hover:bg-rose-50 p-1.5 rounded-lg">
+                                                <i class="fa-solid fa-trash-can"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        function openAddStudentModal() {
+            openModal(`
+                <h3 class="font-bold text-slate-800 text-base mb-4">เพิ่มข้อมูลนักเรียน</h3>
+                <form onsubmit="saveStudent(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">รหัสนักเรียน</label>
+                        <input type="text" id="std-id" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อ-นามสกุล</label>
+                        <input type="text" id="std-name" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกระดับชั้น</label>
+                            <select id="std-class" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                                ${db.systemSettings.classes.map(c => `<option value="${c}">${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกห้องเรียน</label>
+                            <select id="std-room" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                                ${db.systemSettings.rooms.map(r => `<option value="${r}">${r}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">ตั้งค่าสี Tag (Color Picker)</label>
+                        <input type="color" id="std-color" value="#0C7C82" class="h-10 w-full cursor-pointer rounded-xl border border-slate-200 p-1">
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-600">ยกเลิก</button>
+                        <button type="submit" class="px-4 py-2 bg-brand-primary text-white rounded-xl text-xs font-medium">บันทึก</button>
+                    </div>
+                </form>
+            `);
+        }
+
+        function saveStudent(e) {
+            e.preventDefault();
+            const sid = document.getElementById('std-id').value;
+            const name = document.getElementById('std-name').value;
+            const classLevel = document.getElementById('std-class').value;
+            const room = document.getElementById('std-room').value;
+            const color = document.getElementById('std-color').value;
+
+            db.students.push({ id: sid, name, classLevel, room, color });
+            // Add user account automatically
+            db.users.push({ id: Date.now(), username: sid, password: sid, name, role: 'student' });
+
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', timer: 1200, showConfirmButton: false });
+            switchAdminMenu('students');
+        }
+
+        function deleteStudent(sid) {
+            Swal.fire({
+                title: 'ยืนยันการลบ?',
+                text: `คุณต้องการลบนักเรียนรหัส ${sid} หรือไม่`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#EF5350'
+            }).then(r => {
+                if (r.isConfirmed) {
+                    db.students = db.students.filter(x => x.id !== sid);
+                    switchAdminMenu('students');
+                }
+            });
+        }
+
+        /* --------------------------------------------------------------------------
+           Admin Menu 5: Assignment Creation Menu (มอบหมายงาน)
+           -------------------------------------------------------------------------- */
+        function renderAssignmentsMenu() {
+            return `
+            <div class="space-y-4">
+                <div class="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200/80">
+                    <div>
+                        <h3 class="font-bold text-slate-800">เมนูมอบหมายงาน</h3>
+                        <p class="text-xs text-slate-500">สร้างงานใหม่ มอบหมายภาระงานให้นักเรียน</p>
+                    </div>
+                    <button onclick="openAddAssignmentModal()" class="bg-brand-primary hover:bg-brand-teal text-white px-3 py-2 rounded-xl text-xs font-medium shadow-sm">
+                        <i class="fa-solid fa-plus mr-1"></i> เพิ่มงานใหม่
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    ${db.assignments.map(a => `
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                            <div class="absolute top-0 left-0 right-0 h-1.5" style="background-color: ${a.color}"></div>
+                            <div>
+                                <div class="flex justify-between items-start gap-2 mb-2">
+                                    <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full text-white" style="background-color: ${a.color}">
+                                        ${a.type}
+                                    </span>
+                                    <span class="text-xs text-slate-400 font-medium">คะแนนเต็ม ${a.score}</span>
+                                </div>
+                                <h4 class="font-bold text-slate-800 text-base mb-1 line-clamp-1">${a.title}</h4>
+                                <p class="text-xs text-slate-500 mb-3">${a.subject} (${a.classLevel} ห้อง ${a.room})</p>
+                                <p class="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 mb-3">${a.detail}</p>
+                            </div>
+                            <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                                <span><i class="fa-regular fa-clock mr-1"></i> กำหนดส่ง: ${a.dueDate}</span>
+                                <button onclick="deleteAssignment(${a.id})" class="text-brand-rose hover:bg-rose-50 p-1.5 rounded-lg">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            `;
+        }
+
+        function openAddAssignmentModal() {
+            openModal(`
+                <h3 class="font-bold text-slate-800 text-base mb-4">เพิ่มการมอบหมายงานใหม่</h3>
+                <form onsubmit="saveAssignment(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">เพิ่มชื่องาน</label>
+                        <input type="text" id="asgn-title" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกรายวิชา</label>
+                        <select id="asgn-subject" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                            ${db.systemSettings.subjects.map(s => `<option value="${s}">${s}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกระดับชั้น</label>
+                            <select id="asgn-class" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                                ${db.systemSettings.classes.map(c => `<option value="${c}">${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกห้องเรียน</label>
+                            <select id="asgn-room" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                                ${db.systemSettings.rooms.map(r => `<option value="${r}">${r}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ประเภทงาน</label>
+                            <select id="asgn-type" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                                ${db.systemSettings.workTypes.map(t => `<option value="${t.name}">${t.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">กำหนดวันส่งงาน</label>
+                            <input type="date" id="asgn-date" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">คะแนนเต็ม</label>
+                            <input type="number" id="asgn-score" value="10" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ตั้งค่าสี Color Picker</label>
+                            <input type="color" id="asgn-color" value="#0C7C82" class="h-10 w-full cursor-pointer rounded-xl border border-slate-200 p-1">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">รายละเอียดงาน</label>
+                        <textarea id="asgn-detail" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none"></textarea>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-600">ยกเลิก</button>
+                        <button type="submit" class="px-4 py-2 bg-brand-primary text-white rounded-xl text-xs font-medium">บันทึกงาน</button>
+                    </div>
+                </form>
+            `);
+        }
+
+        function saveAssignment(e) {
+            e.preventDefault();
+            db.assignments.push({
+                id: Date.now(),
+                title: document.getElementById('asgn-title').value,
+                subject: document.getElementById('asgn-subject').value,
+                classLevel: document.getElementById('asgn-class').value,
+                room: document.getElementById('asgn-room').value,
+                type: document.getElementById('asgn-type').value,
+                dueDate: document.getElementById('asgn-date').value,
+                score: parseInt(document.getElementById('asgn-score').value),
+                color: document.getElementById('asgn-color').value,
+                detail: document.getElementById('asgn-detail').value,
+                assignedDate: new Date().toISOString().split('T')[0]
+            });
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'เพิ่มงานเรียบร้อย', timer: 1200, showConfirmButton: false });
+            switchAdminMenu('assignments');
+        }
+
+        function deleteAssignment(id) {
+            Swal.fire({
+                title: 'ยืนยันการลบภาระงาน?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#EF5350'
+            }).then(r => {
+                if (r.isConfirmed) {
+                    db.assignments = db.assignments.filter(x => x.id !== id);
+                    switchAdminMenu('assignments');
+                }
+            });
+        }
+
+        /* --------------------------------------------------------------------------
+           Admin Menu 6: Grading Management (ตรวจการส่งงาน)
+           -------------------------------------------------------------------------- */
+        function renderGradingMenu() {
+            return `
+            <div class="space-y-4">
+                <!-- Search Filter Form -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                    <h3 class="font-bold text-slate-800 text-sm">ฟอร์มค้นหาข้อมูลการส่งงาน</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกระดับชั้น</label>
+                            <select id="grade-filter-class" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none">
+                                <option value="all">ทุกระดับชั้น</option>
+                                ${db.systemSettings.classes.map(c => `<option value="${c}">${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกห้องเรียน</label>
+                            <select id="grade-filter-room" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none">
+                                <option value="all">ทุกห้องเรียน</option>
+                                ${db.systemSettings.rooms.map(r => `<option value="${r}">${r}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกรายวิชา</label>
+                            <select id="grade-filter-subject" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none">
+                                <option value="all">ทุกรายวิชา</option>
+                                ${db.systemSettings.subjects.map(s => `<option value="${s}">${s}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submissions Table -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                                <tr>
+                                    <th class="p-3">ชื่องาน</th>
+                                    <th class="p-3">นักเรียน</th>
+                                    <th class="p-3">ไฟล์งาน</th>
+                                    <th class="p-3">วันที่ส่ง</th>
+                                    <th class="p-3">สถานะ (Dropdown)</th>
+                                    <th class="p-3">ให้คะแนน</th>
+                                    <th class="p-3 text-center">ตรวจงาน</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                ${db.submissions.map(sub => {
+                                    const asg = db.assignments.find(a => a.id === sub.assignmentId) || {};
+                                    const std = db.students.find(s => s.id === sub.studentId) || {};
+                                    return `
+                                    <tr class="hover:bg-slate-50/50">
+                                        <td class="p-3">
+                                            <p class="font-medium text-slate-800">${asg.title || '-'}</p>
+                                            <span class="text-[10px] text-slate-400">${asg.subject || ''}</span>
+                                        </td>
+                                        <td class="p-3">
+                                            <p class="font-medium text-slate-700">${std.name || sub.studentId}</p>
+                                            <span class="text-[10px] text-slate-400">${std.classLevel \vert{}\vert{} ''}${std.room || ''}</span>
+                                        </td>
+                                        <td class="p-3">
+                                            <span class="inline-flex items-center gap-1 text-xs text-brand-sky font-medium underline cursor-pointer">
+                                                <i class="fa-solid fa-paperclip"></i> ${sub.fileName}
+                                            </span>
+                                        </td>
+                                        <td class="p-3 text-xs text-slate-500">${sub.submittedAt}</td>
+                                        <td class="p-3">
+                                            <select onchange="updateSubmissionStatus(${sub.id}, this.value)" class="text-xs font-semibold px-2.5 py-1 rounded-xl border border-slate-200 outline-none">
+                                                <option value="ตรวจแล้ว" ${sub.status === 'ตรวจแล้ว' ? 'selected' : ''}>ตรวจแล้ว</option>
+                                                <option value="ยังไม่ตรวจ" ${sub.status === 'ยังไม่ตรวจ' ? 'selected' : ''}>ยังไม่ตรวจ</option>
+                                                <option value="งานไม่สมบูรณ์" ${sub.status === 'งานไม่สมบูรณ์' ? 'selected' : ''}>งานไม่สมบูรณ์</option>
+                                            </select>
+                                        </td>
+                                        <td class="p-3 font-bold text-brand-primary">
+                                            ${sub.score} /${asg.score || 10}
+                                        </td>
+                                        <td class="p-3 text-center">
+                                            <button onclick="openGradeModal(${sub.id})" class="bg-brand-primary hover:bg-brand-teal text-white px-3 py-1.5 rounded-xl text-xs font-medium transition">
+                                                <i class="fa-solid fa-pen mr-1"></i> ตรวจ/ให้คะแนน
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        function updateSubmissionStatus(subId, newStatus) {
+            const sub = db.submissions.find(s => s.id === subId);
+            if (sub) {
+                sub.status = newStatus;
+                Swal.fire({ icon: 'success', title: 'อัพเดทสถานะแล้ว', timer: 1000, showConfirmButton: false });
+            }
+        }
+
+        function openGradeModal(subId) {
+            const sub = db.submissions.find(s => s.id === subId);
+            const asg = db.assignments.find(a => a.id === sub.assignmentId) || {};
+            openModal(`
+                <h3 class="font-bold text-slate-800 text-base mb-4">ตรวจการส่งงานและให้คะแนน</h3>
+                <form onsubmit="saveGrade(event, ${sub.id})" class="space-y-4">
+                    <div>
+                        <p class="text-xs text-slate-500">ชื่องาน: <b class="text-slate-800">${asg.title}</b></p>
+                        <p class="text-xs text-slate-500">ไฟล์ที่ส่ง: <a href="#" class="text-brand-sky underline">${sub.fileName}</a></p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">สถานะงาน</label>
+                        <select id="grade-status" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                            <option value="ตรวจแล้ว" ${sub.status === 'ตรวจแล้ว' ? 'selected' : ''}>ตรวจแล้ว</option>
+                            <option value="ยังไม่ตรวจ" ${sub.status === 'ยังไม่ตรวจ' ? 'selected' : ''}>ยังไม่ตรวจ</option>
+                            <option value="งานไม่สมบูรณ์" ${sub.status === 'งานไม่สมบูรณ์' ? 'selected' : ''}>งานไม่สมบูรณ์</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">ให้คะแนน (เต็ม ${asg.score || 10})</label>
+                        <input type="number" id="grade-score" value="${sub.score}" max="${asg.score || 10}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">ข้อความแจ้งเตือนถึงนักเรียน</label>
+                        <textarea id="grade-note" rows="3" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none" placeholder="ระบุคอมเมนต์หรือข้อควรแก้ไข...">${sub.teacherNote || ''}</textarea>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-600">ยกเลิก</button>
+                        <button type="submit" class="px-4 py-2 bg-brand-primary text-white rounded-xl text-xs font-medium">บันทึกผลการตรวจ</button>
+                    </div>
+                </form>
+            `);
+        }
+
+        function saveGrade(e, subId) {
+            e.preventDefault();
+            const sub = db.submissions.find(s => s.id === subId);
+            if (sub) {
+                sub.status = document.getElementById('grade-status').value;
+                sub.score = parseInt(document.getElementById('grade-score').value);
+                sub.teacherNote = document.getElementById('grade-note').value;
+
+                if (sub.teacherNote) {
+                    db.teacherMessages.push({
+                        id: Date.now(),
+                        studentId: sub.studentId,
+                        message: `[ผลการตรวจงาน] ${sub.teacherNote}`,
+                        sender: currentUser.name,
+                        date: new Date().toLocaleString('th-TH')
+                    });
+                }
+            }
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'ตรวจงานสำเร็จ', text: 'บันทึกการตรวจและแจ้งเตือนนักเรียนเรียบร้อย', timer: 1500, showConfirmButton: false });
+            switchAdminMenu('grading');
+        }
+
+        /* --------------------------------------------------------------------------
+           Admin Menu 7: Search Student Menu (ค้นหาผู้เรียน)
+           -------------------------------------------------------------------------- */
+        function renderSearchStudentMenu() {
+            return `
+            <div class="space-y-4">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                    <h3 class="font-bold text-slate-800 text-sm">ค้นหาข้อมูลผู้เรียนและการส่งงาน</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ระดับชั้น</label>
+                            <select id="src-class" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none">
+                                <option value="">ทั้งหมด</option>
+                                ${db.systemSettings.classes.map(c => `<option value="${c}">${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ห้องเรียน</label>
+                            <select id="src-room" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none">
+                                <option value="">ทั้งหมด</option>
+                                ${db.systemSettings.rooms.map(r => `<option value="${r}">${r}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ค้นหาจากรหัส</label>
+                            <input type="text" id="src-code" placeholder="เช่น 65001" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ประเภทงาน (Dropdown)</label>
+                            <select id="src-type" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none">
+                                <option value="">ทุกประเภท</option>
+                                ${db.systemSettings.workTypes.map(t => `<option value="${t.name}">${t.name}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Structured 5-Column Result Table -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                                <tr>
+                                    <th class="p-3 w-1/5">คอลัมน์ที่ 1: ชื่อ-นามสกุล</th>
+                                    <th class="p-3 w-1/6">คอลัมน์ที่ 2: ระดับชั้น</th>
+                                    <th class="p-3 w-1/6">คอลัมน์ที่ 3: ห้องเรียน</th>
+                                    <th class="p-3 w-1/4">คอลัมน์ที่ 4: รายวิชา</th>
+                                    <th class="p-3 w-1/4">คอลัมน์ที่ 5: งานส่งแล้ว / ยังไม่ส่ง</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                ${db.students.map(std => {
+                                    return db.assignments.map(asg => {
+                                        const sub = db.submissions.find(s => s.studentId === std.id && s.assignmentId === asg.id);
+                                        const isSubmitted = !!sub;
+                                        return `
+                                        <tr class="hover:bg-slate-50/50">
+                                            <td class="p-3 font-medium text-slate-800">${std.name}</td>
+                                            <td class="p-3">${std.classLevel}</td>
+                                            <td class="p-3">${std.room}</td>
+                                            <td class="p-3">${asg.subject} (${asg.title})</td>
+                                            <td class="p-3">
+                                                ${isSubmitted ?
+                                                    `<span class="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
+                                                        <i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i>ส่งแล้ว (สีเขียว)
+                                                     </span>` :
+                                                    `<span class="bg-rose-100 text-rose-800 text-xs font-semibold px-2.5 py-1 rounded-full border border-rose-200">
+                                                        <i class="fa-solid fa-circle-xmark mr-1 text-rose-600"></i>ยังไม่ส่ง (สีแดง)
+                                                     </span>`
+                                                }
+                                            </td>
+                                        </tr>
+                                        `;
+                                    }).join('');
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        /* --------------------------------------------------------------------------
+           Admin Menu 8: Unsubmitted Tracking Menu (ติดตามไม่ส่งงาน)
+           -------------------------------------------------------------------------- */
+        function renderTrackingMenu() {
+            // Find students who haven't submitted assignments
+            const unsubmittedList = [];
+            db.students.forEach(std => {
+                db.assignments.forEach(asg => {
+                    const sub = db.submissions.find(s => s.studentId === std.id && s.assignmentId === asg.id);
+                    if (!sub) {
+                        unsubmittedList.push({ student: std, assignment: asg });
+                    }
+                });
+            });
+
+            return `
+            <div class="space-y-4">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex justify-between items-center">
+                    <div>
+                        <h3 class="font-bold text-slate-800">ติดตามนักเรียนค้างส่งงาน</h3>
+                        <p class="text-xs text-slate-500">แสดงทุกรายวิชา ทุกงาน พร้อมฟังก์ชันส่งข้อความถึงนักเรียน</p>
+                    </div>
+                    <span class="bg-rose-100 text-rose-700 font-bold text-xs px-3 py-1 rounded-full">
+                        ค้างส่ง ${unsubmittedList.length} รายการ
+                    </span>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                                <tr>
+                                    <th class="p-3">ชื่อ-นามสกุล</th>
+                                    <th class="p-3">ชั้นเรียน / ห้อง</th>
+                                    <th class="p-3">รายวิชาค้างส่ง</th>
+                                    <th class="p-3">ชื่องานที่ค้าง</th>
+                                    <th class="p-3">กำหนดส่ง</th>
+                                    <th class="p-3 text-center">ส่งข้อความถึงนักเรียน</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                ${unsubmittedList.map(item => `
+                                    <tr class="hover:bg-slate-50/50">
+                                        <td class="p-3 font-medium text-slate-800">${item.student.name}</td>
+                                        <td class="p-3">${item.student.classLevel} /${item.student.room}</td>
+                                        <td class="p-3 font-semibold text-brand-purple">${item.assignment.subject}</td>
+                                        <td class="p-3 text-slate-700">${item.assignment.title}</td>
+                                        <td class="p-3 text-xs text-brand-rose font-medium">${item.assignment.dueDate}</td>
+                                        <td class="p-3 text-center">
+                                            <button onclick="openSendMessageModal('${item.student.id}', '${item.student.name}')" class="bg-brand-teal hover:bg-brand-primary text-white px-3 py-1.5 rounded-xl text-xs font-medium transition">
+                                                <i class="fa-solid fa-paper-plane mr-1"></i> ส่งข้อความเตือน
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        function openSendMessageModal(studentId, studentName) {
+            openModal(`
+                <h3 class="font-bold text-slate-800 text-base mb-2">ส่งข้อความถึงนักเรียน</h3>
+                <p class="text-xs text-slate-500 mb-4">ผู้รับ: <b class="text-slate-800">${studentName} (${studentId})</b></p>
+                <form onsubmit="sendMessageToStudent(event, '${studentId}')" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">ข้อความแจ้งเตือน</label>
+                        <textarea id="msg-text" rows="4" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none" placeholder="พิมพ์ข้อความที่ต้องการแจ้งเตือน เช่น อย่าลืมส่งใบงานที่ 1 วิชาคอมพิวเตอร์..."></textarea>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 rounded-xl text-xs font-medium text-slate-600">ยกเลิก</button>
+                        <button type="submit" class="px-4 py-2 bg-brand-primary text-white rounded-xl text-xs font-medium">
+                            <i class="fa-solid fa-paper-plane mr-1"></i> ส่งข้อความ
+                        </button>
+                    </div>
+                </form>
+            `);
+        }
+
+        function sendMessageToStudent(e, studentId) {
+            e.preventDefault();
+            const txt = document.getElementById('msg-text').value;
+            db.teacherMessages.push({
+                id: Date.now(),
+                studentId,
+                message: txt,
+                sender: currentUser.name,
+                date: new Date().toLocaleString('th-TH')
+            });
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'ส่งข้อความเรียบร้อย', text: 'ข้อความแจ้งเตือนถูกส่งไปยังเมนูนักเรียนแล้ว', timer: 1500, showConfirmButton: false });
+        }
+
+
+        /* ==========================================================================
+           3. STUDENT LAYOUT & MENUS
+           ========================================================================== */
+        function renderStudentLayout() {
+            const studentMenus = [
+                { id: 'std-dashboard', name: 'แดชบอร์ด', icon: 'fa-chart-pie' },
+                { id: 'std-assigned', name: 'งานที่ครูมอบหมาย', icon: 'fa-list-check' },
+                { id: 'std-submit', name: 'ส่งงาน', icon: 'fa-cloud-arrow-up' },
+                { id: 'std-submitted', name: 'งานที่ส่งแล้ว', icon: 'fa-circle-check' },
+                { id: 'std-pending', name: 'งานที่ยังไม่ส่ง', icon: 'fa-clock' },
+                { id: 'std-messages', name: 'ข้อความจากครู', icon: 'fa-envelope-open-text' }
+            ];
+
+            return `
+            <div class="flex min-h-screen relative">
+                <!-- Sidebar -->
+                <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200 transform -translate-x-full lg:translate-x-0 sidebar-transition flex flex-col justify-between shadow-sm">
+                    <div>
+                        <!-- Brand Header -->
+                        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <img src="${db.systemSettings.logoUrl}" class="w-10 h-10 object-contain p-1 bg-slate-50 rounded-xl">
+                                <div class="overflow-hidden">
+                                    <h2 class="font-bold text-sm text-slate-800 truncate">${db.systemSettings.schoolName}</h2>
+                                    <span class="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">ระบบนักเรียน</span>
+                                </div>
+                            </div>
+                            <button onclick="toggleSidebar()" class="lg:hidden text-slate-400">
+                                <i class="fa-solid fa-xmark text-lg"></i>
+                            </button>
+                        </div>
+
+                        <!-- Menu List -->
+                        <nav class="p-3 space-y-1">
+                            ${studentMenus.map(m => `
+                                <button onclick="switchStudentMenu('${m.id}')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${currentMenu === m.id ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20' : 'text-slate-600 hover:bg-slate-100'}">
+                                    <i class="fa-solid ${m.icon} w-5 text-center${currentMenu === m.id ? 'text-white' : 'text-brand-teal'}"></i>
+                                    <span>${m.name}</span>
+                                </button>
+                            `).join('')}
+                        </nav>
+                    </div>
+
+                    <!-- Student Profile -->
+                    <div class="p-4 border-t border-slate-100 bg-slate-50/50">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2 overflow-hidden">
+                                <div class="w-8 h-8 rounded-full bg-brand-teal text-white flex items-center justify-center font-bold text-xs">
+                                    ${currentUser.name.charAt(0)}
+                                </div>
+                                <div class="truncate">
+                                    <p class="text-xs font-semibold text-slate-800 truncate">${currentUser.name}</p>
+                                    <p class="text-[10px] text-slate-400">รหัส: ${currentUser.username}</p>
+                                </div>
+                            </div>
+                            <button onclick="logout()" class="text-slate-400 hover:text-brand-rose p-1.5 rounded-lg hover:bg-white transition" title="ออกจากระบบ">
+                                <i class="fa-solid fa-right-from-bracket text-base"></i>
+                            </button>
+                        </div>
+                    </div>
+                </aside>
+
+                <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/30 z-20 hidden lg:hidden"></div>
+
+                <!-- Main Content -->
+                <main class="flex-1 lg:ml-64 flex flex-col min-h-screen">
+                    <header class="bg-white border-b border-slate-200 py-3 px-4 flex items-center justify-between sticky top-0 z-10">
+                        <div class="flex items-center gap-3">
+                            <button onclick="toggleSidebar()" class="lg:hidden text-slate-600 p-2 hover:bg-slate-100 rounded-lg">
+                                <i class="fa-solid fa-bars text-lg"></i>
+                            </button>
+                            <h2 class="text-lg font-bold text-slate-800 capitalize">
+                                ${studentMenus.find(x => x.id === currentMenu)?.name || ''}
+                            </h2>
+                        </div>
+                    </header>
+
+                    <div id="student-main-content" class="p-4 md:p-6 flex-grow">
+                        <!-- Dynamic Student Content -->
+                    </div>
+                </main>
+            </div>
+
+            <!-- Mobile Shortcut Bar -->
+            <div class="lg:hidden fixed bottom-4 right-4 z-20">
+                <button onclick="quickPhoneShortcut()" class="w-12 h-12 bg-brand-teal text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition border-2 border-white">
+                    <i class="fa-solid fa-mobile-screen-button text-xl"></i>
+                </button>
+            </div>
+            `;
+        }
+
+        function switchStudentMenu(menuId) {
+            showLoader();
+            currentMenu = menuId;
+            if (sidebarOpen) toggleSidebar();
+            setTimeout(() => {
+                renderApp();
+                hideLoader();
+            }, 300);
+        }
+
+        function initStudentMenuContent() {
+            const container = document.getElementById('student-main-content');
+            if (!container) return;
+
+            switch(currentMenu) {
+                case 'std-dashboard':
+                    container.innerHTML = renderStudentDashboard();
+                    initStudentCharts();
+                    break;
+                case 'std-assigned':
+                    container.innerHTML = renderStudentAssignedMenu();
+                    break;
+                case 'std-submit':
+                    container.innerHTML = renderStudentSubmitMenu();
+                    break;
+                case 'std-submitted':
+                    container.innerHTML = renderStudentSubmittedMenu();
+                    initStudentSubmittedChart();
+                    break;
+                case 'std-pending':
+                    container.innerHTML = renderStudentPendingMenu();
+                    break;
+                case 'std-messages':
+                    container.innerHTML = renderStudentMessagesMenu();
+                    break;
+            }
+        }
+
+        /* --------------------------------------------------------------------------
+           Student Menu 1: Dashboard
+           -------------------------------------------------------------------------- */
+        function renderStudentDashboard() {
+            const total = db.assignments.length;
+            const nb = db.assignments.filter(a => a.type === 'สมุด').length;
+            const ws = db.assignments.filter(a => a.type === 'ใบงาน').length;
+            const grp = db.assignments.filter(a => a.type === 'งานกลุ่ม').length;
+
+            return `
+            <div class="space-y-6">
+                <!-- Mobile Shortcut Icons (Mobile Responsive Only) -->
+                <div class="block lg:hidden bg-gradient-to-r from-brand-teal to-brand-primary text-white p-4 rounded-2xl shadow-sm mb-4">
+                    <p class="text-xs font-medium text-teal-100">เมนูทางลัด iPhone Style</p>
+                    <div class="grid grid-cols-3 gap-2 mt-3 text-center">
+                        <button onclick="switchStudentMenu('std-submit')" class="bg-white/20 p-2.5 rounded-xl text-xs hover:bg-white/30">
+                            <i class="fa-solid fa-cloud-arrow-up block text-lg mb-1"></i>ส่งงานด่วน
+                        </button>
+                        <button onclick="switchStudentMenu('std-pending')" class="bg-white/20 p-2.5 rounded-xl text-xs hover:bg-white/30">
+                            <i class="fa-solid fa-clock block text-lg mb-1"></i>งานยังไม่ส่ง
+                        </button>
+                        <button onclick="switchStudentMenu('std-messages')" class="bg-white/20 p-2.5 rounded-xl text-xs hover:bg-white/30">
+                            <i class="fa-solid fa-comment-dots block text-lg mb-1"></i>ข้อความครู
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Cards Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400">งานทั้งหมดที่ได้รับ</p>
+                                <h3 class="text-2xl font-bold text-slate-800 mt-1">${total} <span class="text-xs font-normal">งาน</span></h3>
+                            </div>
+                            <div class="w-12 h-12 bg-brand-primary/10 text-brand-primary rounded-2xl flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-book-open"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 bg-slate-100 rounded-full h-2 w-full overflow-hidden">
+                            <div class="bg-brand-primary h-full" style="width: 100%"></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400">ประเภท: สมุด</p>
+                                <h3 class="text-2xl font-bold text-slate-800 mt-1">${nb} <span class="text-xs font-normal">งาน</span></h3>
+                            </div>
+                            <div class="w-12 h-12 bg-[#0C7C82]/10 text-[#0C7C82] rounded-2xl flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-book"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 bg-slate-100 rounded-full h-2 w-full overflow-hidden">
+                            <div class="bg-[#0C7C82] h-full" style="width: ${(nb/total*100)||0}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400">ประเภท: ใบงาน</p>
+                                <h3 class="text-2xl font-bold text-slate-800 mt-1">${ws} <span class="text-xs font-normal">งาน</span></h3>
+                            </div>
+                            <div class="w-12 h-12 bg-[#35B4B0]/10 text-[#35B4B0] rounded-2xl flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-file-lines"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 bg-slate-100 rounded-full h-2 w-full overflow-hidden">
+                            <div class="bg-[#35B4B0] h-full" style="width: ${(ws/total*100)||0}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400">ประเภท: งานกลุ่ม</p>
+                                <h3 class="text-2xl font-bold text-slate-800 mt-1">${grp} <span class="text-xs font-normal">งาน</span></h3>
+                            </div>
+                            <div class="w-12 h-12 bg-[#4A2C6D]/10 text-[#4A2C6D] rounded-2xl flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-users"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 bg-slate-100 rounded-full h-2 w-full overflow-hidden">
+                            <div class="bg-[#4A2C6D] h-full" style="width: ${(grp/total*100)||0}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart.js Graph -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                    <h4 class="font-bold text-slate-800 text-sm mb-4">กราฟแสดงสถานะการส่งงานของฉัน</h4>
+                    <div class="relative w-full h-64 flex items-center justify-center">
+                        <canvas id="stdDashboardChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        function initStudentCharts() {
+            const ctx = document.getElementById('stdDashboardChart')?.getContext('2d');
+            if (ctx) {
+                const mySubmissions = db.submissions.filter(s => s.studentId === currentUser.username);
+                const submittedCount = mySubmissions.length;
+                const pendingCount = db.assignments.length - submittedCount;
+
+                new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['ส่งงานแล้ว', 'ยังไม่ได้ส่ง'],
+                        datasets: [{
+                            data: [submittedCount, pendingCount],
+                            backgroundColor: ['#AED581', '#EF5350']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+        }
+
+        /* --------------------------------------------------------------------------
+           Student Menu 2: Assigned Tasks
+           -------------------------------------------------------------------------- */
+        function renderStudentAssignedMenu() {
+            return `
+            <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+                <div class="p-4 border-b border-slate-100 font-bold text-slate-800">
+                    รายการงานที่ครูมอบหมายทั้งหมด
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                            <tr>
+                                <th class="p-3">รายวิชา</th>
+                                <th class="p-3">ชื่องาน</th>
+                                <th class="p-3">วันที่มอบหมาย</th>
+                                <th class="p-3">วันกำหนดส่งงาน</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            ${db.assignments.map(a => `
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="p-3 font-semibold text-brand-primary">${a.subject}</td>
+                                    <td class="p-3 font-medium text-slate-800">${a.title}</td>
+                                    <td class="p-3 text-xs text-slate-500">${a.assignedDate || '2026-10-01'}</td>
+                                    <td class="p-3 text-xs text-brand-rose font-medium">${a.dueDate}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            `;
+        }
+
+        /* --------------------------------------------------------------------------
+           Student Menu 3: Submit Task (ส่งงาน)
+           -------------------------------------------------------------------------- */
+        function renderStudentSubmitMenu() {
+            const mySubmissions = db.submissions.filter(s => s.studentId === currentUser.username);
+
+            return `
+            <div class="max-w-2xl mx-auto space-y-6">
+                <!-- Notifications from Teacher if graded -->
+                ${mySubmissions.filter(s => s.teacherNote).map(s => {
+                    const asg = db.assignments.find(a => a.id === s.assignmentId) || {};
+                    return `
+                    <div class="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3 text-amber-900">
+                        <i class="fa-solid fa-circle-info text-amber-600 text-lg mt-0.5"></i>
+                        <div>
+                            <h4 class="font-bold text-xs">แจ้งเตือนการตรวจงานจากครู: ${asg.title}</h4>
+                            <p class="text-xs mt-1">${s.teacherNote}</p>
+                            <span class="text-[10px] text-amber-600 font-semibold mt-1 inline-block">สถานะ: ${s.status}</span>
+                        </div>
+                    </div>
+                    `;
+                }).join('')}
+
+                <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-800 border-b border-slate-100 pb-3">
+                        <i class="fa-solid fa-cloud-arrow-up text-brand-teal mr-2"></i>ฟอร์มส่งงานนักเรียน
+                    </h3>
+
+                    <form onsubmit="handleStudentSubmission(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกรายวิชา</label>
+                            <select id="sub-subject" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none" onchange="filterAssignmentsBySubject(this.value)">
+                                <option value="">-- กรุณาเลือกรายวิชา --</option>
+                                ${db.systemSettings.subjects.map(s => `<option value="${s}">${s}</option>`).join('')}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">เลือกงานที่ต้องการส่ง</label>
+                            <select id="sub-assignment" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none" required>
+                                ${db.assignments.map(a => `<option value="${a.id}">${a.title} (${a.subject})</option>`).join('')}
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Dropdown ประเภทการส่ง</label>
+                                <select id="sub-type" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none" onchange="toggleUploadInputs(this.value)">
+                                    <option value="file">อัปโหลดไฟล์ (.png, .jpg, .pdf)</option>
+                                    <option value="link">แนบลิงก์ (URL)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">ตั้งค่าสี Color Picker</label>
+                                <input type="color" id="sub-color" value="#35B4B0" class="h-10 w-full cursor-pointer rounded-xl border border-slate-200 p-1">
+                            </div>
+                        </div>
+
+                        <div id="input-file-container">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">อัพโหลดงาน (ไฟล์ .png, .jpg, .pdf)</label>
+                            <input type="file" id="sub-file" accept=".png, .jpg, .jpeg, .pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-medium file:bg-brand-primary file:text-white">
+                        </div>
+
+                        <div id="input-link-container" class="hidden">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">แนบลิงก์งาน (Link Google Drive / Canva)</label>
+                            <input type="url" id="sub-link" placeholder="https://..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none">
+                        </div>
+
+                        <button type="submit" class="w-full bg-brand-primary hover:bg-brand-teal text-white py-3 rounded-xl font-medium shadow-md shadow-brand-primary/20 transition">
+                            <i class="fa-solid fa-paper-plane mr-1"></i> ยืนยันการส่งงาน
+                        </button>
+                    </form>
+                </div>
+            </div>
+            `;
+        }
+
+        function toggleUploadInputs(val) {
+            if (val === 'file') {
+                document.getElementById('input-file-container').classList.remove('hidden');
+                document.getElementById('input-link-container').classList.add('hidden');
+            } else {
+                document.getElementById('input-file-container').classList.add('hidden');
+                document.getElementById('input-link-container').classList.remove('hidden');
+            }
+        }
+
+        function handleStudentSubmission(e) {
+            e.preventDefault();
+            showLoader();
+            const asgId = parseInt(document.getElementById('sub-assignment').value);
+            const fileType = document.getElementById('sub-type').value;
+            let fileName = 'my_work_doc.pdf';
+
+            if (fileType === 'link') {
+                fileName = document.getElementById('sub-link').value || 'https://link.com';
+            } else {
+                const f = document.getElementById('sub-file').files[0];
+                if (f) fileName = f.name;
+            }
+
+            setTimeout(() => {
+                db.submissions.push({
+                    id: Date.now(),
+                    assignmentId: asgId,
+                    studentId: currentUser.username,
+                    fileType,
+                    fileName,
+                    submittedAt: new Date().toLocaleString('th-TH'),
+                    status: 'ยังไม่ตรวจ',
+                    score: 0,
+                    teacherNote: '',
+                    color: document.getElementById('sub-color').value
+                });
+                hideLoader();
+                Swal.fire({ icon: 'success', title: 'ส่งงานเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false });
+                switchStudentMenu('std-submitted');
+            }, 500);
+        }
+
+        /* --------------------------------------------------------------------------
+           Student Menu 4: Submitted Tasks (งานที่ส่งแล้ว + สถิติกราฟ)
+           -------------------------------------------------------------------------- */
+        function renderStudentSubmittedMenu() {
+            const mySubmissions = db.submissions.filter(s => s.studentId === currentUser.username);
+
+            return `
+            <div class="space-y-6">
+                <!-- สถิติกราฟส่งงาน -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                    <h4 class="font-bold text-slate-800 text-sm mb-2">แสดงสถิติกราฟส่งงาน</h4>
+                    <div class="relative w-full h-48 flex items-center justify-center">
+                        <canvas id="studentSubmittedChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+                    <div class="p-4 border-b border-slate-100 font-bold text-slate-800">รายการงานที่ส่งแล้ว</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                                <tr>
+                                    <th class="p-3">รายวิชา</th>
+                                    <th class="p-3">งานที่ส่งแล้ว</th>
+                                    <th class="p-3">วันที่ส่ง</th>
+                                    <th class="p-3">สถานะ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                ${mySubmissions.map(s => {
+                                    const asg = db.assignments.find(a => a.id === s.assignmentId) || {};
+                                    return `
+                                    <tr class="hover:bg-slate-50/50">
+                                        <td class="p-3 font-semibold text-brand-primary">${asg.subject || '-'}</td>
+                                        <td class="p-3 font-medium text-slate-800">${asg.title || '-'}</td>
+                                        <td class="p-3 text-xs text-slate-500">${s.submittedAt}</td>
+                                        <td class="p-3">
+                                            <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                                                ${s.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        function initStudentSubmittedChart() {
+            const ctx = document.getElementById('studentSubmittedChart')?.getContext('2d');
+            if (ctx) {
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['งานที่ส่งแล้วทั้งหมด'],
+                        datasets: [{
+                            label: 'จำนวนงานที่ส่ง (ชิ้น)',
+                            data: [db.submissions.filter(s => s.studentId === currentUser.username).length],
+                            backgroundColor: ['#35B4B0']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+        }
+
+        /* --------------------------------------------------------------------------
+           Student Menu 5: Pending Tasks (งานที่ยังไม่ส่ง)
+           -------------------------------------------------------------------------- */
+        function renderStudentPendingMenu() {
+            const mySubmittedIds = db.submissions.filter(s => s.studentId === currentUser.username).map(s => s.assignmentId);
+            const pendingAssignments = db.assignments.filter(a => !mySubmittedIds.includes(a.id));
+
+            return `
+            <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+                <div class="p-4 border-b border-slate-100 font-bold text-slate-800 flex justify-between items-center">
+                    <span>รายการงานที่ยังไม่ได้ส่ง</span>
+                    <span class="text-xs text-brand-rose bg-rose-50 px-2.5 py-1 rounded-full">ค้างส่ง ${pendingAssignments.length} งาน</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                            <tr>
+                                <th class="p-3">รายวิชา</th>
+                                <th class="p-3">ประเภทงาน</th>
+                                <th class="p-3">ชื่องาน</th>
+                                <th class="p-3">งานที่ยังไม่ส่ง</th>
+                                <th class="p-3">วันกำหนดส่ง (ข้อความสีแดง)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            ${pendingAssignments.map(a => `
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="p-3 font-semibold text-brand-primary">${a.subject}</td>
+                                    <td class="p-3 text-xs">${a.type}</td>
+                                    <td class="p-3 font-medium text-slate-800">${a.title}</td>
+                                    <td class="p-3">
+                                        <span class="bg-rose-100 text-rose-700 text-xs font-semibold px-2.5 py-1 rounded-full">ยังไม่ได้ส่ง</span>
+                                    </td>
+                                    <td class="p-3 text-xs text-red-600 font-bold">${a.dueDate}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            `;
+        }
+
+        /* --------------------------------------------------------------------------
+           Student Menu 6: Teacher Messages (ข้อความจากครู)
+           -------------------------------------------------------------------------- */
+        function renderStudentMessagesMenu() {
+            const msgs = db.teacherMessages.filter(m => m.studentId === currentUser.username);
+
+            return `
+            <div class="max-w-3xl mx-auto space-y-4">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200/80 font-bold text-slate-800">
+                    <i class="fa-solid fa-envelope-open-text text-brand-primary mr-2"></i>ข้อความที่ครูพิมพ์แจ้งมาในระบบ
+                </div>
+
+                ${msgs.length === 0 ? `
+                    <div class="bg-white p-8 text-center rounded-2xl border border-slate-200/80 text-slate-400">
+                        <i class="fa-solid fa-inbox text-3xl mb-2"></i>
+                        <p class="text-xs">ไม่มีข้อความแจ้งเตือนใหม่จากครู</p>
+                    </div>
+                ` : msgs.map(m => `
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                            <span class="font-bold text-xs text-brand-primary"><i class="fa-solid fa-user-tie mr-1"></i> ${m.sender}</span>
+                            <span class="text-[10px] text-slate-400">${m.date}</span>
+                        </div>
+                        <p class="text-sm text-slate-700 leading-relaxed">${m.message}</p>
+                    </div>
+                `).join('')}
+            </div>
+            `;
+        }
+
+        /* Global Helpers & Modals */
+        function openModal(htmlContent) {
+            document.getElementById('modal-body').innerHTML = htmlContent;
+            document.getElementById('modal-container').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('modal-container').classList.add('hidden');
+        }
+
+        function quickPhoneShortcut() {
+            Swal.fire({
+                title: 'iPhone Style Shortcut',
+                text: 'เมนูทางลัดด่วนบนมือถือ',
+                icon: 'info',
+                confirmButtonColor: '#0C7C82'
+            });
+        }
+    </script>
+</body>
+</html>
